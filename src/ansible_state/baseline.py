@@ -68,7 +68,7 @@ class BaselineStore:
     def approved(self, host: str) -> dict:
         folder = self._host_dir(host)
         pointer = json.loads((folder / "approved.json").read_text(encoding="utf-8"))
-        return json.loads((folder / f'{pointer["snapshot_id"]}.json').read_text(encoding="utf-8"))
+        return self.snapshot_record(host, pointer["snapshot_id"])
 
     def hosts(self) -> list[str]:
         found = []
@@ -88,7 +88,8 @@ def diff(expected: dict, actual: dict) -> list[dict]:
     for domain in ("packages", "services", "listeners", "users", "filesystem", "cron", "timers", "sysctl", "firewall", "containers"):
         old, new = expected.get(domain), actual.get(domain)
         if old is None or new is None:
-            changes.append({"domain": domain, "change": "unknown"})
+            changes.append({"domain": domain, "change": "unknown",
+                            "reason": ("baseline_unavailable" if old is None else "collection_unavailable")})
             continue
         if domain == "sysctl":
             from ansible_state.inventory import VOLATILE_SYSCTL_KEYS

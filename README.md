@@ -88,3 +88,38 @@ does not yet track firewall rules, kernel settings, cron, container workloads,
 all home directories, or files outside its scan roots. Runtime data can produce
 noise. Snapshots contain usernames, local paths, and file hashes, so protect
 the local `.ansible-state/` directory. Use a dedicated baseline for each host.
+
+## Classified system drift (experimental)
+
+```bash
+ansible-state snapshot common-02.mastcloud.ru
+ansible-state baseline approve common-02.mastcloud.ru SNAPSHOT_ID
+ansible-state system-drift common-02.mastcloud.ru --report-format text
+ansible-state system-drift common-02.mastcloud.ru --policy drift-policy.json
+```
+
+Example `drift-policy.json` (explicit opt-in exclusions, glob patterns):
+
+```json
+{"ignore": [{"domain": "services", "resource": "packagekit.service"}]}
+```
+
+The report adds `category` (`configuration` or `runtime`) and
+`severity` (`info`, `warning`, `critical`) to each change. These
+are heuristic labels, **not** proof of malicious activity or network exposure.
+Filtering suppresses matching findings in the report and exit status; use
+sparingly. Runtime-only systemd active-state changes are informational;
+listener changes are runtime findings.
+
+Additional best-effort collectors inspect current-user crontab, systemd
+timer unit files, sysctl values, nftables (fallback iptables-save), and Docker
+container list. Missing tools, access restrictions or failed commands produce
+`unknown` findings rather than clean results. The crontab collector currently
+covers only the effective user; `/etc` file inventory provides partial coverage
+of system crontabs. Docker status strings and some sysctl values can be volatile.
+
+**Baseline migration:** existing approved snapshots lack these new domains.
+Take a fresh snapshot and explicitly approve it before relying on the expanded
+checks. The tool does not auto-approve any changes. For accurate collection,
+use appropriate Ansible become privileges. Review snapshot storage security:
+firewall rules, sysctl values, and cron content may contain sensitive metadata.

@@ -189,7 +189,11 @@ def main() -> int:
                 approved = store.approved(host)
                 changes = apply_policy(diff(approved["inventory"], data), rules)
                 incomplete = any(change["change"] == "unknown" for change in changes)
-                findings.append({"host": host, "status": "incomplete" if incomplete else ("drift" if changes else "ok"),
+                has_drift = any(change["change"] != "unknown" for change in changes)
+                findings.append({"host": host,
+                                 "status": "drift" if has_drift else ("incomplete" if incomplete else "ok"),
+                                 "incomplete": incomplete,
+                                 "has_drift": has_drift,
                                  "changes": changes})
             except (OSError, ValueError, KeyError) as exc:
                 findings.append({"host": host, "status": "unknown",
@@ -199,7 +203,7 @@ def main() -> int:
             counts = Counter(item["status"] for item in findings)
             print("INFRASTRUCTURE AUDIT: " + ", ".join(
                 f"{name}={counts[name]}" for name in ("ok", "drift", "incomplete", "unknown")
-            ))
+            ) + f", drift_and_incomplete={sum(1 for item in findings if item.get('has_drift') and item.get('incomplete'))}")
             print(format_report(findings))
         else:
             print(json.dumps(findings, indent=2, ensure_ascii=False))

@@ -31,7 +31,7 @@ class CallbackModule(CallbackBase):
             event["inspection_index"] = int(match.group(1))
             stat = data.get("stat", {})
             event["stat"] = {k: stat[k] for k in
-                             ("exists", "checksum", "mode", "owner", "group")
+                             ("exists", "checksum", "mode", "owner", "group", "pw_name", "gr_name")
                              if k in stat}
         else:
             if action not in ("copy", "ansible.builtin.copy", "template",

@@ -63,8 +63,12 @@ def format_report(findings: list[dict]) -> str:
         lines.append(f'{host["host"]}: {host["status"].upper()}')
         if "reason" in host:
             lines.append(f'  {host["reason"]}')
+        if host.get("incomplete") and host.get("has_drift"):
+            lines.append("  NOTE: confirmed drift; some inventory domains remain unavailable")
         for item in host.get("changes", []):
             lines.append(f'  [{item["severity"].upper()}] {item["category"]} '
                          f'{item["domain"]}:{item.get("resource", "*")} ({item["change"]}'
                          f'{", " + item["reason"] if item.get("reason") else ""})')
+            if item.get("collector_error"):
+                lines.append(f'    Collector: {json.dumps(item["collector_error"], ensure_ascii=False)}')
     return "\n".join(lines)

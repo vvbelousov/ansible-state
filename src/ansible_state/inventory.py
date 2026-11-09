@@ -189,7 +189,8 @@ def filesystem():
             continue
     return items
 
-print(json.dumps({"schema": 1, "packages": packages(), "services": services(),
+print(json.dumps({"schema": 1, "_collector_scope": "root" if os.geteuid() == 0 else "user",
+                  "packages": packages(), "services": services(),
                   "listeners": listeners(), "users": users(), "filesystem": filesystem(),
                   "cron": cron(), "timers": timers(), "sysctl": sysctl(),
                   "firewall": firewall(), "containers": containers(),

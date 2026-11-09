@@ -30,7 +30,11 @@ def packages():
 def services():
     out = run("systemctl", "list-unit-files", "--type=service", "--no-legend", "--no-pager")
     if out is None: return None
-    enabled = dict((p[0], p[1]) for line in out.splitlines() if len(p := line.split()) >= 2)\n    active_out = run("systemctl", "list-units", "--type=service", "--all", "--no-legend", "--no-pager")\n    if active_out is None: return None\n    active = dict((p[0], p[2]) for line in active_out.splitlines() if len(p := line.split()) >= 4)\n    return {name: {"unit_file_state": state, "active_state": active.get(name, "not-loaded")} for name, state in enabled.items()}
+    enabled = dict((p[0], p[1]) for line in out.splitlines() if len(p := line.split()) >= 2)
+    active_out = run("systemctl", "list-units", "--type=service", "--all", "--no-legend", "--no-pager")
+    if active_out is None: return None
+    active = dict((p[0], p[2]) for line in active_out.splitlines() if len(p := line.split()) >= 4)
+    return {name: {"unit_file_state": state, "active_state": active.get(name, "not-loaded")} for name, state in enabled.items()}
 
 def listeners():
     out = run("ss", "-H", "-lntup")

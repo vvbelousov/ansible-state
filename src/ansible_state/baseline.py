@@ -30,13 +30,36 @@ class BaselineStore:
         path.write_text(json.dumps(record, sort_keys=True, indent=2), encoding="utf-8")
         return snapshot_id
 
+    def snapshot_record(self, host: str, snapshot_id: str) -> dict:
+        if not (isinstance(snapshot_id, str) and len(snapshot_id) == 32 and
+                all(c in "0123456789abcdef" for c in snapshot_id)):
+            raise ValueError("Invalid snapshot id")
+        record = json.loads((self._host_dir(host) / f"{snapshot_id}.json").read_text(encoding="utf-8"))
+        if record.get("host") != host or not isinstance(record.get("inventory"), dict):
+            raise ValueError("Snapshot host or inventory mismatch")
+        return {"snapshot_id": snapshot_id, **record}
+
+    def latest(self, host: str) -> dict:
+        folder = self._host_dir(host)
+        records = []
+        for path in folder.glob("*.json"):
+            if path.name == "approved.json":
+                continue
+            try:
+                record = self.snapshot_record(host, path.stem)
+                records.append(record)
+            except (OSError, ValueError, KeyError):
+                continue
+        if not records:
+            raise FileNotFoundError(f"No snapshots for {host}")
+        return max(records, key=lambda item: (item["created_at"], item["snapshot_id"]))
+
     def approve(self, host: str, snapshot_id: str) -> None:
         if not (len(snapshot_id) == 32 and all(c in "0123456789abcdef" for c in snapshot_id)):
             raise ValueError("Invalid snapshot id")
         folder = self._host_dir(host)
         path = folder / f"{snapshot_id}.json"
-        if not path.is_file():
-            raise FileNotFoundError(path)
+        self.snapshot_record(host, snapshot_id)
         pointer = folder / "approved.json"
         temporary = folder / "approved.json.tmp"
         temporary.write_text(json.dumps({"snapshot_id": snapshot_id}), encoding="utf-8")

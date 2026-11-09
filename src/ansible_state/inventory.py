@@ -93,6 +93,11 @@ def sysctl():
     # Some kernels expose unreadable /proc/sys entries; sysctl may exit nonzero
     # while still returning a useful inventory on stdout.
     out = proc.stdout
+    if proc.returncode:
+        COLLECTION_ERRORS["sysctl"] = {"command": "sysctl",
+                                       "returncode": proc.returncode,
+                                       "error": proc.stderr.strip()[:300],
+                                       "partial": True}
     result = {}
     for line in out.splitlines():
         if " = " in line:
@@ -194,7 +199,8 @@ print(json.dumps({"schema": 1, "_collector_scope": "root" if os.geteuid() == 0 e
                   "listeners": listeners(), "users": users(), "filesystem": filesystem(),
                   "cron": cron(), "timers": timers(), "sysctl": sysctl(),
                   "firewall": firewall(), "containers": containers(),
-                  "_collection_errors": COLLECTION_ERRORS},
+                  "_collection_errors": COLLECTION_ERRORS,
+                  "_partial_domains": ["sysctl"] if COLLECTION_ERRORS.get("sysctl") else []},
                  sort_keys=True))
 '''
 

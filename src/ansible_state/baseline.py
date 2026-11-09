@@ -93,17 +93,16 @@ def diff(expected: dict, actual: dict) -> list[dict]:
             continue
         unreadable_keys = set()
         if domain == "filesystem":
-            # Legacy unprivileged snapshots often contain unreadable placeholders.
-            # A later privileged hash is new visibility, not evidence of a change.
-            for key in sorted(old.keys() & new.keys()):
+            # Missing files in an unprivileged walk may simply be inaccessible.
+            # Never infer added/removed from inventories collected with
+            # different privilege scopes.
+            for key in old.keys() & new.keys():
                 before, after = old[key], new[key]
                 if (isinstance(before, dict) and before.get("type") == "unreadable" or
                         isinstance(after, dict) and after.get("type") == "unreadable"):
                     unreadable_keys.add(key)
                     changes.append({"domain": domain, "resource": key,
                                     "change": "unknown", "reason": "file_unreadable"})
-            old = {k: v for k, v in old.items() if not (isinstance(v, dict) and v.get("type") == "unreadable")}
-            new = {k: v for k, v in new.items() if not (isinstance(v, dict) and v.get("type") == "unreadable")}
         if domain == "sysctl":
             from ansible_state.inventory import VOLATILE_SYSCTL_KEYS
             old = {k: v for k, v in old.items() if k not in VOLATILE_SYSCTL_KEYS}

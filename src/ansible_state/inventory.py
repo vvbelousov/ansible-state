@@ -88,11 +88,11 @@ def firewall():
     return None
 
 def containers():
-    out = run("docker", "ps", "-a", "--format", "{{.Names}}\\t{{.Image}}\\t{{.Status}}")
+    out = run("docker", "ps", "-a", "--format", "{{.Names}}|{{.Image}}|{{.Status}}")
     if out is None: return None
     result = {}
     for line in out.splitlines():
-        p = line.split("\\t", 2)
+        p = line.split("|", 2)
         if len(p) == 3:
             result[p[0]] = {"image": p[1], "status": p[2]}
     return result

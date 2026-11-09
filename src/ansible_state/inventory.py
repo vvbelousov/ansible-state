@@ -139,7 +139,9 @@ def filesystem():
     return items
 
 print(json.dumps({"schema": 1, "packages": packages(), "services": services(),
-                  "listeners": listeners(), "users": users(), "filesystem": filesystem(),\n                  "cron": cron(), "timers": timers(), "sysctl": sysctl(),\n                  "firewall": firewall(), "containers": containers()},
+                  "listeners": listeners(), "users": users(), "filesystem": filesystem(),
+                  "cron": cron(), "timers": timers(), "sysctl": sysctl(),
+                  "firewall": firewall(), "containers": containers()},
                  sort_keys=True))
 '''
 

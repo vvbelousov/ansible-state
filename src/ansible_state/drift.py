@@ -19,7 +19,10 @@ def compare(expected: dict, actual: dict) -> list[str]:
         differences.append("checksum")
     for key in ("mode", "owner", "group"):
         wanted = expected.get("attributes", {}).get(key)
-        if wanted is not None and actual.get(key) != wanted:
+        observed_key = {"owner": "pw_name", "group": "gr_name"}.get(key, key)
+        observed = actual.get(observed_key)
+        # Missing stat metadata is not evidence of a change.
+        if wanted is not None and observed is not None and str(observed) != str(wanted):
             differences.append(key)
     return differences
 

@@ -49,7 +49,32 @@ def main() -> int:
         if not remaining:
             parser.error("usage: ansible-state system-drift HOST_PATTERN [ansible-playbook options]")
         host_pattern, *options = remaining
-        status, collected = collect(host_pattern, options)
+        from ansible_state.classification import apply_policy, format_report, load_policy
+        report_format = "json"
+        policy_path = None
+        # Our flags are parsed explicitly; all other options go to ansible-playbook.
+        forwarded = []
+        index = 0
+        while index < len(options):
+            if options[index] in ("--report-format", "--policy"):
+                if index + 1 >= len(options):
+                    parser.error(f"{options[index]} requires a value")
+                value = options[index + 1]
+                if options[index] == "--report-format":
+                    if value not in ("json", "text"):
+                        parser.error("--report-format must be json or text")
+                    report_format = value
+                else:
+                    policy_path = value
+                index += 2
+            else:
+                forwarded.append(options[index])
+                index += 1
+        try:
+            rules = load_policy(policy_path)
+        except (OSError, ValueError) as exc:
+            parser.error(f"Invalid drift policy: {exc}")
+        status, collected = collect(host_pattern, forwarded)
         if status:
             print("Inventory collection failed or incomplete", file=sys.stderr)
             return status
@@ -57,13 +82,16 @@ def main() -> int:
         for host, data in sorted(collected.items()):
             try:
                 approved = store.approved(host)
-                changes = diff(approved["inventory"], data)
+                changes = apply_policy(diff(approved["inventory"], data), rules)
                 findings.append({"host": host, "status": "drift" if changes else "ok",
                                  "changes": changes})
             except (OSError, ValueError, KeyError) as exc:
                 findings.append({"host": host, "status": "unknown",
                                  "reason": f"No valid approved baseline: {exc}"})
-        print(json.dumps(findings, indent=2, ensure_ascii=False))
+        if report_format == "text":
+            print(format_report(findings))
+        else:
+            print(json.dumps(findings, indent=2, ensure_ascii=False))
         return 3 if any(item["status"] != "ok" for item in findings) else 0
 
     if args.command == "drift":

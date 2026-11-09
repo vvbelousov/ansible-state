@@ -47,3 +47,44 @@ ruff check src tests
 ```
 
 See [architecture](docs/ARCHITECTURE.md).
+
+## Host-wide inventory (experimental)
+
+No agent or continuous monitoring is installed. The collector runs manually over
+Ansible connections and requires Python 3 on target Linux hosts.
+
+```bash
+# From your playbook directory, using your existing ansible.cfg and inventory:
+ansible-state snapshot common-02.mastcloud.ru
+# Example output: [{"host": "...", "snapshot_id": "32-character-hex"}]
+
+# Explicitly accept that snapshot as the baseline:
+ansible-state baseline approve common-02.mastcloud.ru SNAPSHOT_ID
+
+# Inspect the host again and compare against approved state:
+ansible-state system-drift common-02.mastcloud.ru
+```
+
+Supply regular Ansible options *after* the host pattern, e.g.
+`ansible-state snapshot webservers -i inventory --become`.
+
+The collector inventories installed dpkg/rpm packages, systemd service
+unit-file and runtime states, listening TCP/UDP endpoints, local user accounts,
+and metadata for files beneath `/etc`, `/usr/local/etc`, `/usr/local/bin`,
+`/opt`, and `/srv`. Regular files up to 8 MiB are SHA-256 hashed.
+It does not read or store file contents. Symlinks are not followed and
+mount points on different devices are skipped. Inaccessible paths are marked
+unreadable. Collection is best-effort and **not a complete system snapshot**.
+
+Snapshot IDs are immutable and are never implicitly approved. The `baseline
+approve` command changes only the approved snapshot pointer. `system-drift`
+does not modify hosts or update the baseline. Exit status 0 means no differences
+in collected domains, 3 means differences or unknown baseline, and other
+nonzero statuses mean collection errors.
+
+**Limitations:** Python must be available on remote hosts; systemd, dpkg/rpm,
+and `ss` may be unavailable; SSH privileges affect visibility. The collector
+does not yet track firewall rules, kernel settings, cron, container workloads,
+all home directories, or files outside its scan roots. Runtime data can produce
+noise. Snapshots contain usernames, local paths, and file hashes, so protect
+the local `.ansible-state/` directory. Use a dedicated baseline for each host.

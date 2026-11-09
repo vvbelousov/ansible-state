@@ -24,7 +24,14 @@ class CallbackModule(CallbackBase):
         args = getattr(task, "args", {}) or {}
         event = {"status": status, "action": action,
                  "host": result._host.get_name()}
-        if os.environ.get("ANSIBLE_STATE_DRIFT") == "1":
+        if os.environ.get("ANSIBLE_STATE_INVENTORY") == "1":
+            if task.get_name() != "ansible-state inventory":
+                return
+            if status == "ok":
+                event["inventory"] = data.get("stdout", "")
+            else:
+                event["error"] = str(data.get("msg", "collection failed"))
+        elif os.environ.get("ANSIBLE_STATE_DRIFT") == "1":
             match = re.fullmatch(r"ansible-state inspection (\d+)", task.get_name())
             if not match or action not in ("stat", "ansible.builtin.stat"):
                 return

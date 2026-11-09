@@ -31,6 +31,7 @@ def main() -> int:
                 migration_parser = argparse.ArgumentParser(prog="ansible-state baseline migrate")
                 migration_parser.add_argument("pattern")
                 migration_parser.add_argument("--prepare", action="store_true")
+                migration_parser.add_argument("--collector-become", action="store_true")
                 migration_parser.add_argument("--write-manifest")
                 migration_parser.add_argument("-i", "--inventory", action="append")
                 migration_args = migration_parser.parse_args(remaining[1:])
@@ -39,6 +40,8 @@ def main() -> int:
                 forwarded = []
                 for inventory_path in migration_args.inventory or []:
                     forwarded.extend(["-i", inventory_path])
+                if migration_args.collector_become:
+                    forwarded.append("--collector-become")
                 from ansible_state.migration import plan_backfill
                 try:
                     selected = resolve_hosts(migration_args.pattern, forwarded)
@@ -193,11 +196,15 @@ def main() -> int:
                     if change["change"] == "unknown" and change["domain"] in errors:
                         change["collector_error"] = errors[change["domain"]]
                 incomplete = any(change["change"] == "unknown" for change in changes)
-                has_drift = any(change["change"] != "unknown" for change in changes)
+                has_drift = any(change["change"] != "unknown" and
+                                change["category"] != "runtime" for change in changes)
+                runtime_changes = any(change["change"] != "unknown" and
+                                      change["category"] == "runtime" for change in changes)
                 findings.append({"host": host,
                                  "status": "drift" if has_drift else ("incomplete" if incomplete else "ok"),
                                  "incomplete": incomplete,
                                  "has_drift": has_drift,
+                                 "has_runtime_changes": runtime_changes,
                                  "changes": changes})
             except (OSError, ValueError, KeyError) as exc:
                 findings.append({"host": host, "status": "unknown",

@@ -11,6 +11,12 @@ import subprocess
 import tempfile
 import os
 
+VOLATILE_SYSCTL_KEYS = frozenset((
+    "fs.dentry-state", "fs.file-nr", "fs.inode-nr", "fs.inode-state",
+    "kernel.ns_last_pid", "kernel.random.uuid", "kernel.random.boot_id",
+    "net.netfilter.nf_conntrack_count",
+))
+
 COLLECTOR = r'''#!/usr/bin/env python3
 import hashlib, json, os, pwd, re, shutil, subprocess, stat
 

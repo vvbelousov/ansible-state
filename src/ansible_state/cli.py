@@ -77,13 +77,22 @@ def main() -> int:
             if not remaining:
                 parser.error("usage: ansible-state snapshot HOST_PATTERN [ansible-playbook options]")
             host_pattern, *options = remaining
+            from ansible_state.multi_host import resolve_hosts
+            try:
+                selected = resolve_hosts(host_pattern, options)
+            except (OSError, RuntimeError) as exc:
+                print(f"Inventory resolution failed: {exc}", file=sys.stderr)
+                return 2
+            if not selected:
+                print("Host pattern matched no hosts", file=sys.stderr)
+                return 2
             status, collected = collect(host_pattern, options)
-            if status:
-                print("Inventory collection failed or incomplete", file=sys.stderr)
-                return status
-            print(json.dumps([{"host": host, "snapshot_id": store.snapshot(host, data)}
-                              for host, data in sorted(collected.items())], indent=2))
-            return 0
+            rows = [{"host": host, "snapshot_id": store.snapshot(host, collected[host]),
+                     "status": "collected"} if host in collected else
+                    {"host": host, "status": "failed"}
+                    for host in selected]
+            print(json.dumps(rows, indent=2))
+            return status or (3 if any(row["status"] == "failed" for row in rows) else 0)
         # system-drift: only explicitly approved hosts, never update baseline.
         if not remaining:
             parser.error("usage: ansible-state system-drift HOST_PATTERN [ansible-playbook options]")
@@ -113,11 +122,19 @@ def main() -> int:
             rules = load_policy(policy_path)
         except (OSError, ValueError) as exc:
             parser.error(f"Invalid drift policy: {exc}")
+        from ansible_state.multi_host import resolve_hosts
+        try:
+            selected = resolve_hosts(host_pattern, forwarded)
+        except (OSError, RuntimeError) as exc:
+            print(f"Inventory resolution failed: {exc}", file=sys.stderr)
+            return 2
+        if not selected:
+            print("Host pattern matched no hosts", file=sys.stderr)
+            return 2
         status, collected = collect(host_pattern, forwarded)
-        if status:
-            print("Inventory collection failed or incomplete", file=sys.stderr)
-            return status
-        findings = []
+        findings = [{"host": host, "status": "unknown",
+                     "reason": "Host collection failed or returned no inventory"}
+                    for host in selected if host not in collected]
         for host, data in sorted(collected.items()):
             try:
                 approved = store.approved(host)
@@ -131,7 +148,7 @@ def main() -> int:
             print(format_report(findings))
         else:
             print(json.dumps(findings, indent=2, ensure_ascii=False))
-        return 3 if any(item["status"] != "ok" for item in findings) else 0
+        return status or (3 if any(item["status"] != "ok" for item in findings) else 0)
 
     if args.command == "drift":
         from ansible_state.drift import check

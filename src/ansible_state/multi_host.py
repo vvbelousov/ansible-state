@@ -77,5 +77,5 @@ def approve_manifest(store: BaselineStore, path: str, confirm: bool) -> list[dic
     result = []
     for item in approvals:
         store.approve(item["host"], item["snapshot_id"])
-        result.append({"host": item["host"], "approved_snapshot": item["snapshot_id"]})
+        result.append({"host": item["host"], "snapshot_id": item["snapshot_id"]})
     return result

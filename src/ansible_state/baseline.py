@@ -96,7 +96,7 @@ def diff(expected: dict, actual: dict) -> list[dict]:
             new = {k: v for k, v in new.items() if k not in VOLATILE_SYSCTL_KEYS}
         if domain == "containers":
             def normalize_containers(items):
-                return {k: {"image": v.get("image"), "state": v.get("state", str(v.get("status", "")).split(" ", 1)[0].lower())}
+                return {k: {"image": v.get("image"), "state": v.get("state", ({"up": "running", "exited": "exited", "created": "created", "paused": "paused", "restarting": "restarting"}.get(str(v.get("status", "")).split(" ", 1)[0].lower(), str(v.get("status", "")).split(" ", 1)[0].lower())))}
                         if isinstance(v, dict) else v for k, v in items.items()}
             old, new = normalize_containers(old), normalize_containers(new)
         if isinstance(old, list) and isinstance(new, list):

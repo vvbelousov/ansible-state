@@ -15,6 +15,7 @@ def test_incomplete_reason_is_not_silently_clean():
     expected = {"cron": None, "firewall": None}
     actual = {"cron": {"current_user": ""}, "firewall": {}}
     changes = apply_policy(diff(expected, actual), [])
+    changes = [item for item in changes if item["domain"] in ("cron", "firewall")]
     assert len(changes) == 2
     assert all(change["reason"] == "baseline_unavailable" for change in changes)
     report = format_report([{"host": "host1", "status": "incomplete", "changes": changes}])

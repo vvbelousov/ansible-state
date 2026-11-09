@@ -15,7 +15,7 @@ VOLATILE_SYSCTL_KEYS = frozenset((
     "fs.dentry-state", "fs.file-nr", "fs.inode-nr", "fs.inode-state",
     "kernel.ns_last_pid", "kernel.random.uuid", "kernel.random.boot_id",
     "fs.quota.syncs",
-    "net.netfilter.nf_conntrack_count",
+    "net.netfilter.nf_conntrack_count", "kernel.pty.nr",
 ))
 
 COLLECTOR = r'''#!/usr/bin/env python3
@@ -83,7 +83,7 @@ def timers():
 VOLATILE_SYSCTL = (
     "fs.dentry-state", "fs.file-nr", "fs.inode-nr", "fs.inode-state",
     "kernel.ns_last_pid", "kernel.random.uuid", "kernel.random.boot_id",
-    "net.netfilter.nf_conntrack_count",
+    "net.netfilter.nf_conntrack_count", "kernel.pty.nr", "fs.quota.syncs",
 )
 def sysctl():
     try:

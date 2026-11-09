@@ -90,6 +90,15 @@ def diff(expected: dict, actual: dict) -> list[dict]:
         if old is None or new is None:
             changes.append({"domain": domain, "change": "unknown"})
             continue
+        if domain == "sysctl":
+            from ansible_state.inventory import VOLATILE_SYSCTL_KEYS
+            old = {k: v for k, v in old.items() if k not in VOLATILE_SYSCTL_KEYS}
+            new = {k: v for k, v in new.items() if k not in VOLATILE_SYSCTL_KEYS}
+        if domain == "containers":
+            def normalize_containers(items):
+                return {k: {"image": v.get("image"), "state": v.get("state", str(v.get("status", "")).split(" ", 1)[0].lower())}
+                        if isinstance(v, dict) else v for k, v in items.items()}
+            old, new = normalize_containers(old), normalize_containers(new)
         if isinstance(old, list) and isinstance(new, list):
             old, new = {str(v): True for v in old}, {str(v): True for v in new}
         for key in sorted(old.keys() | new.keys()):

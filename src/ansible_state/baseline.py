@@ -115,9 +115,10 @@ def diff(expected: dict, actual: dict) -> list[dict]:
             old, new = normalize_containers(old), normalize_containers(new)
         if isinstance(old, list) and isinstance(new, list):
             old, new = {str(v): True for v in old}, {str(v): True for v in new}
-        scope_changed = (expected.get("_collector_scope") != actual.get("_collector_scope")
-                         and (expected.get("_collector_scope") is not None or
-                              actual.get("_collector_scope") is not None))
+        old_scope = expected.get("_collector_scope", "legacy_user")
+        new_scope = actual.get("_collector_scope", "legacy_user")
+        scope_changed = (old_scope != new_scope and
+                         not ({old_scope, new_scope} <= {"legacy_user", "user"}))
         for key in sorted(old.keys() | new.keys()):
             if key in unreadable_keys:
                 continue

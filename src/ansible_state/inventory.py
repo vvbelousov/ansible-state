@@ -5,7 +5,6 @@ retrieved through an Ansible callback, not through SSH access from Python.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -13,7 +12,7 @@ import tempfile
 import os
 
 COLLECTOR = r'''#!/usr/bin/env python3
-import hashlib, json, os, pwd, grp, socket, subprocess, stat
+import hashlib, json, os, pwd, subprocess, stat
 
 def run(*cmd):
     try:
@@ -31,7 +30,7 @@ def packages():
 def services():
     out = run("systemctl", "list-unit-files", "--type=service", "--no-legend", "--no-pager")
     if out is None: return None
-    return dict((p[0], p[1]) for line in out.splitlines() if len(p := line.split()) >= 2)
+    enabled = dict((p[0], p[1]) for line in out.splitlines() if len(p := line.split()) >= 2)\n    active_out = run("systemctl", "list-units", "--type=service", "--all", "--no-legend", "--no-pager")\n    if active_out is None: return None\n    active = dict((p[0], p[2]) for line in active_out.splitlines() if len(p := line.split()) >= 4)\n    return {name: {"unit_file_state": state, "active_state": active.get(name, "not-loaded")} for name, state in enabled.items()}
 
 def listeners():
     out = run("ss", "-H", "-lntup")

@@ -91,6 +91,7 @@ def diff(expected: dict, actual: dict) -> list[dict]:
             changes.append({"domain": domain, "change": "unknown",
                             "reason": ("baseline_unavailable" if old is None else "collection_unavailable")})
             continue
+        unreadable_keys = set()
         if domain == "filesystem":
             # Legacy unprivileged snapshots often contain unreadable placeholders.
             # A later privileged hash is new visibility, not evidence of a change.
@@ -98,6 +99,7 @@ def diff(expected: dict, actual: dict) -> list[dict]:
                 before, after = old[key], new[key]
                 if (isinstance(before, dict) and before.get("type") == "unreadable" or
                         isinstance(after, dict) and after.get("type") == "unreadable"):
+                    unreadable_keys.add(key)
                     changes.append({"domain": domain, "resource": key,
                                     "change": "unknown", "reason": "file_unreadable"})
             old = {k: v for k, v in old.items() if not (isinstance(v, dict) and v.get("type") == "unreadable")}
@@ -117,6 +119,8 @@ def diff(expected: dict, actual: dict) -> list[dict]:
                          and (expected.get("_collector_scope") is not None or
                               actual.get("_collector_scope") is not None))
         for key in sorted(old.keys() | new.keys()):
+            if key in unreadable_keys:
+                continue
             if domain in ("filesystem", "sysctl") and scope_changed and (key not in old or key not in new):
                 changes.append({"domain": domain, "resource": key, "change": "unknown",
                                 "reason": "collection_scope_changed"})

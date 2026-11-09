@@ -192,6 +192,6 @@ def collect(host_pattern: str, ansible_args: list[str] | None = None) -> tuple[i
                         collected[event["host"]] = json.loads(event["inventory"])
                 except (ValueError, KeyError, TypeError):
                     continue
-        if status != 0 or not collected:
+        if not collected:
             return status or 2, {}
-        return 0, collected
+        return status, collected

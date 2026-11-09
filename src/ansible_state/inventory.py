@@ -241,18 +241,21 @@ def collect(host_pattern: str, ansible_args: list[str] | None = None,
         except FileNotFoundError:
             return 127, {}
         collected = {}
+        failed_hosts = set()
         if events.exists():
             for line in events.read_text(encoding="utf-8").splitlines():
                 try:
                     event = json.loads(line)
                     if event.get("status") == "ok" and event.get("inventory"):
                         collected[event["host"]] = json.loads(event["inventory"])
+                    elif event.get("status") == "failed":
+                        failed_hosts.add(event["host"])
                 except (ValueError, KeyError, TypeError):
                     continue
         # Retry only failed privileged hosts with their original user.
         # Scope metadata keeps the resulting inventories distinguishable.
         if collector_become and fallback_hosts:
-            missing = sorted(set(fallback_hosts) - set(collected))
+            missing = sorted((set(fallback_hosts) & failed_hosts) - set(collected))
             if missing:
                 _, recovered = collect(":".join(missing), args)
                 collected.update(recovered)

@@ -21,11 +21,17 @@ def plan_backfill(store: BaselineStore, host: str, current: dict) -> dict:
         if old.get(domain) is not None:
             continue
         value = current.get(domain)
-        if value is None:
+        if value is None or domain in current.get("_partial_domains", []):
             unavailable.append(domain)
         else:
             merged[domain] = value
             added.append(domain)
+    if added:
+        merged["_backfill_provenance"] = {
+            **old.get("_backfill_provenance", {}),
+            **{domain: {"collector_scope": current.get("_collector_scope", "legacy_user")}
+               for domain in added},
+        }
     # Detect changes to previously known fields independently of backfill.
     known_changes = [c for c in diff(old, current)
                      if c["change"] != "unknown"]

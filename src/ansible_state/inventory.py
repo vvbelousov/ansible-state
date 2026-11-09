@@ -198,7 +198,8 @@ print(json.dumps({"schema": 1, "_collector_scope": "root" if os.geteuid() == 0 e
                  sort_keys=True))
 '''
 
-def collect(host_pattern: str, ansible_args: list[str] | None = None) -> tuple[int, dict]:
+def collect(host_pattern: str, ansible_args: list[str] | None = None,
+            fallback_hosts: list[str] | None = None) -> tuple[int, dict]:
     """Run a collector with ansible.builtin.script; return host -> inventory.
 
     The collector is copied by Ansible to the target and removed afterwards.
@@ -248,6 +249,13 @@ def collect(host_pattern: str, ansible_args: list[str] | None = None) -> tuple[i
                         collected[event["host"]] = json.loads(event["inventory"])
                 except (ValueError, KeyError, TypeError):
                     continue
+        # Retry only failed privileged hosts with their original user.
+        # Scope metadata keeps the resulting inventories distinguishable.
+        if collector_become and fallback_hosts:
+            missing = sorted(set(fallback_hosts) - set(collected))
+            if missing:
+                _, recovered = collect(":".join(missing), args)
+                collected.update(recovered)
         if not collected:
             return status or 2, {}
         return status, collected

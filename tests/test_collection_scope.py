@@ -41,3 +41,13 @@ def test_legacy_user_to_user_addition_is_not_hidden():
     changes = changes_for(old, new, "sysctl")
     assert len(changes) == 1
     assert changes[0]["change"] == "added"
+
+
+def test_partial_sysctl_does_not_report_missing_as_removed():
+    old = {"sysctl": {"net.ipv4.ip_forward": "0", "kernel.some_key": "1"}}
+    new = {"_partial_domains": ["sysctl"],
+           "sysctl": {"net.ipv4.ip_forward": "0"}}
+    changes = changes_for(old, new, "sysctl")
+    assert len(changes) == 1
+    assert changes[0]["change"] == "unknown"
+    assert changes[0]["reason"] == "partial_collection"

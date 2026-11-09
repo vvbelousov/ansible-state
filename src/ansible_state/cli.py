@@ -24,8 +24,47 @@ def main() -> int:
         from ansible_state.inventory import collect
         store = BaselineStore(os.environ.get("ANSIBLE_STATE_SNAPSHOTS", ".ansible-state/snapshots"))
         if args.command == "baseline":
+            from ansible_state.multi_host import (
+                approve_manifest, manifest_from_review, resolve_hosts, review,
+            )
+            if remaining and remaining[0] == "status" and len(remaining) >= 2:
+                pattern, *options = remaining[1:]
+                manifest_path = None
+                if "--write-manifest" in options:
+                    idx = options.index("--write-manifest")
+                    if idx + 1 >= len(options):
+                        parser.error("--write-manifest requires a path")
+                    manifest_path = options[idx + 1]
+                    options = options[:idx] + options[idx + 2:]
+                try:
+                    hosts = resolve_hosts(pattern, options)
+                    if not hosts:
+                        raise ValueError("Host pattern matched no hosts")
+                    items = review(store, hosts)
+                    if manifest_path:
+                        Path(manifest_path).write_text(
+                            json.dumps(manifest_from_review(items), indent=2), encoding="utf-8"
+                        )
+                except (OSError, ValueError, RuntimeError) as exc:
+                    print(f"Baseline status failed: {exc}", file=sys.stderr)
+                    return 2
+                print(json.dumps(items, indent=2))
+                return 3 if any(item["status"] != "approved" for item in items) else 0
+            if remaining[:1] == ["approve"] and "--manifest" in remaining:
+                idx = remaining.index("--manifest")
+                if idx + 1 >= len(remaining):
+                    parser.error("--manifest requires a path")
+                if set(remaining[1:idx] + remaining[idx + 2:]) - {"--confirm"}:
+                    parser.error("usage: baseline approve --manifest FILE --confirm")
+                try:
+                    result = approve_manifest(store, remaining[idx + 1], "--confirm" in remaining)
+                except (OSError, ValueError, KeyError) as exc:
+                    print(f"Baseline approval failed: {exc}", file=sys.stderr)
+                    return 2
+                print(json.dumps(result, indent=2))
+                return 0
             if len(remaining) != 3 or remaining[0] != "approve":
-                parser.error("usage: ansible-state baseline approve HOST SNAPSHOT_ID")
+                parser.error("usage: baseline status PATTERN [-i INVENTORY] [--write-manifest FILE] | baseline approve --manifest FILE --confirm | baseline approve HOST SNAPSHOT_ID")
             _, host, snapshot_id = remaining
             try:
                 store.approve(host, snapshot_id)

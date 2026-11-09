@@ -14,6 +14,7 @@ import os
 VOLATILE_SYSCTL_KEYS = frozenset((
     "fs.dentry-state", "fs.file-nr", "fs.inode-nr", "fs.inode-state",
     "kernel.ns_last_pid", "kernel.random.uuid", "kernel.random.boot_id",
+    "fs.quota.syncs",
     "net.netfilter.nf_conntrack_count",
 ))
 
@@ -201,7 +202,9 @@ def collect(host_pattern: str, ansible_args: list[str] | None = None) -> tuple[i
 
     The collector is copied by Ansible to the target and removed afterwards.
     """
-    args = ansible_args or []
+    args = list(ansible_args or [])
+    collector_become = "--collector-become" in args
+    args = [arg for arg in args if arg != "--collector-become"]
     with tempfile.TemporaryDirectory(prefix="ansible-state-inventory-") as tmp:
         root = Path(tmp)
         script = root / "collector.py"
@@ -212,6 +215,7 @@ def collect(host_pattern: str, ansible_args: list[str] | None = None) -> tuple[i
             "hosts": host_pattern,
             "gather_facts": False,
             "tasks": [{
+                "become": collector_become,
                 "name": "ansible-state inventory",
                 "ansible.builtin.script": str(script),
                 "changed_when": False,

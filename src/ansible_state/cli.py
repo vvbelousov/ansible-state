@@ -188,6 +188,10 @@ def main() -> int:
             try:
                 approved = store.approved(host)
                 changes = apply_policy(diff(approved["inventory"], data), rules)
+                errors = data.get("_collection_errors", {})
+                for change in changes:
+                    if change["change"] == "unknown" and change["domain"] in errors:
+                        change["collector_error"] = errors[change["domain"]]
                 incomplete = any(change["change"] == "unknown" for change in changes)
                 has_drift = any(change["change"] != "unknown" for change in changes)
                 findings.append({"host": host,

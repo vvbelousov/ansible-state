@@ -16,8 +16,55 @@ from ansible_state.state import Registry
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ansible-state")
-    parser.add_argument("command", choices=("apply", "state", "drift"))
+    parser.add_argument("command", choices=("apply", "state", "drift", "snapshot", "baseline", "system-drift"))
     args, remaining = parser.parse_known_args()
+
+    if args.command in ("snapshot", "baseline", "system-drift"):
+        from ansible_state.baseline import BaselineStore, diff
+        from ansible_state.inventory import collect
+        store = BaselineStore(os.environ.get("ANSIBLE_STATE_SNAPSHOTS", ".ansible-state/snapshots"))
+        if args.command == "baseline":
+            if len(remaining) != 3 or remaining[0] != "approve":
+                parser.error("usage: ansible-state baseline approve HOST SNAPSHOT_ID")
+            _, host, snapshot_id = remaining
+            try:
+                store.approve(host, snapshot_id)
+            except (OSError, ValueError) as exc:
+                print(f"Baseline approval failed: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps({"host": host, "approved_snapshot": snapshot_id}))
+            return 0
+        if args.command == "snapshot":
+            if not remaining:
+                parser.error("usage: ansible-state snapshot HOST_PATTERN [ansible-playbook options]")
+            host_pattern, *options = remaining
+            status, collected = collect(host_pattern, options)
+            if status:
+                print("Inventory collection failed or incomplete", file=sys.stderr)
+                return status
+            print(json.dumps([{"host": host, "snapshot_id": store.snapshot(host, data)}
+                              for host, data in sorted(collected.items())], indent=2))
+            return 0
+        # system-drift: only explicitly approved hosts, never update baseline.
+        if not remaining:
+            parser.error("usage: ansible-state system-drift HOST_PATTERN [ansible-playbook options]")
+        host_pattern, *options = remaining
+        status, collected = collect(host_pattern, options)
+        if status:
+            print("Inventory collection failed or incomplete", file=sys.stderr)
+            return status
+        findings = []
+        for host, data in sorted(collected.items()):
+            try:
+                approved = store.approved(host)
+                changes = diff(approved["inventory"], data)
+                findings.append({"host": host, "status": "drift" if changes else "ok",
+                                 "changes": changes})
+            except (OSError, ValueError, KeyError) as exc:
+                findings.append({"host": host, "status": "unknown",
+                                 "reason": f"No valid approved baseline: {exc}"})
+        print(json.dumps(findings, indent=2, ensure_ascii=False))
+        return 3 if any(item["status"] != "ok" for item in findings) else 0
 
     if args.command == "drift":
         from ansible_state.drift import check

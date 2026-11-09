@@ -85,15 +85,20 @@ VOLATILE_SYSCTL = (
     "net.netfilter.nf_conntrack_count",
 )
 def sysctl():
-    out = run("sysctl", "-a")
-    if out is None: return None
+    try:
+        proc = subprocess.run(("sysctl", "-a"), text=True, capture_output=True, timeout=45)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    # Some kernels expose unreadable /proc/sys entries; sysctl may exit nonzero
+    # while still returning a useful inventory on stdout.
+    out = proc.stdout
     result = {}
     for line in out.splitlines():
         if " = " in line:
             key, value = line.split(" = ", 1)
             if key not in VOLATILE_SYSCTL:
                 result[key] = value
-    return result
+    return result if result else None
 
 def firewall():
     if shutil.which("nft"):

@@ -1,0 +1,9 @@
+---
+- name: Minimal compatibility example
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Confirm unmodified playbook execution
+      ansible.builtin.debug:
+        msg: "Hello from Ansible"

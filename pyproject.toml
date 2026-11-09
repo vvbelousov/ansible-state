@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ansible-state"
+version = "0.1.0"
+description = "Opt-in resource state tracking for existing Ansible playbooks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = ["ansible-core>=2.16,<2.21"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[project.scripts]
+ansible-state = "ansible_state.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_state"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

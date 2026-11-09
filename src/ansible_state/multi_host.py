@@ -10,7 +10,9 @@ from ansible_state.baseline import BaselineStore, diff
 
 def resolve_hosts(pattern: str, ansible_args: list[str]) -> list[str]:
     """Use Ansible's own inventory and host-pattern resolution."""
-    cmd = ["ansible", pattern, "--list-hosts", *ansible_args]
+    # Collector-only options must never reach the Ansible ad-hoc CLI.
+    inventory_args = [arg for arg in ansible_args if arg != "--collector-become"]
+    cmd = ["ansible", pattern, "--list-hosts", *inventory_args]
     proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if proc.returncode:
         raise RuntimeError(proc.stderr.strip() or "Ansible inventory resolution failed")

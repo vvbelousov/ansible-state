@@ -27,3 +27,19 @@ def test_diff_added_removed_modified_and_unknown():
     assert ("packages", "modified") in [(c["domain"], c["change"]) for c in changes]
     assert ("listeners", "added") in [(c["domain"], c["change"]) for c in changes]
     assert diff({"packages": None}, {"packages": {}})[0]["change"] == "unknown"
+
+def test_collector_is_valid_python():
+    from ansible_state.inventory import COLLECTOR
+
+    compile(COLLECTOR, "remote_collector.py", "exec")
+
+
+def test_approving_new_snapshot_keeps_old_snapshot(tmp_path):
+    store = BaselineStore(tmp_path)
+    old = store.snapshot("node", {"packages": {"nginx": "1"}})
+    new = store.snapshot("node", {"packages": {"nginx": "2"}})
+    store.approve("node", old)
+    assert store.approved("node")["inventory"]["packages"]["nginx"] == "1"
+    store.approve("node", new)
+    assert store.approved("node")["inventory"]["packages"]["nginx"] == "2"
+    assert (store._host_dir("node") / f"{old}.json").exists()

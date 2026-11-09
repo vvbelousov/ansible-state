@@ -16,8 +16,18 @@ from ansible_state.state import Registry
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ansible-state")
-    parser.add_argument("command", choices=("apply", "state"))
+    parser.add_argument("command", choices=("apply", "state", "drift"))
     args, remaining = parser.parse_known_args()
+
+    if args.command == "drift":
+        from ansible_state.drift import check
+        db = Registry(os.environ.get("ANSIBLE_STATE_DB", ".ansible-state/state.db"))
+        try:
+            status, findings = check(db, remaining)
+        finally:
+            db.close()
+        print(json.dumps(findings, indent=2, ensure_ascii=False))
+        return status if status else (3 if any(f["status"] != "ok" for f in findings) else 0)
 
     if args.command == "state":
         if remaining:

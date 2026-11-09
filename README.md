@@ -123,3 +123,31 @@ Take a fresh snapshot and explicitly approve it before relying on the expanded
 checks. The tool does not auto-approve any changes. For accurate collection,
 use appropriate Ansible become privileges. Review snapshot storage security:
 firewall rules, sysctl values, and cron content may contain sensitive metadata.
+
+## Multi-host workflow
+
+Ansible host patterns are resolved using `ansible --list-hosts`; each host
+retains its own snapshot and approved baseline. Groups may mix different roles.
+
+```bash
+ansible-state snapshot all -i inventory.ini
+ansible-state baseline status all -i inventory.ini --write-manifest approvals.json
+# Review the manifest: each entry contains an exact host and snapshot ID.
+ansible-state baseline approve --manifest approvals.json --confirm
+ansible-state system-drift all -i inventory.ini --report-format text
+```
+
+`baseline status` reports missing, pending, changed and approved hosts.
+`--write-manifest` writes a reviewable JSON file with exact snapshot IDs.
+Approval validates all entries before changing any pointers, but pointer
+updates are **not transactional across hosts**; retain the manifest for retries.
+The single-host `baseline approve HOST SNAPSHOT_ID` still works.
+
+Collection failures are shown per host. Successful hosts can be snapshotted
+even if others fail; a nonzero overall exit status indicates a partial failure.
+Only hosts matched by Ansible's inventory pattern are included; use explicit
+inventory options and review the host selection before approving.
+
+A host snapshot is not a group-wide desired state. Each host is compared only
+to its own approved snapshot. Collection is still best-effort: successful
+collector execution does not guarantee every domain was readable.

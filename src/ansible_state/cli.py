@@ -139,12 +139,18 @@ def main() -> int:
             try:
                 approved = store.approved(host)
                 changes = apply_policy(diff(approved["inventory"], data), rules)
-                findings.append({"host": host, "status": "drift" if changes else "ok",
+                incomplete = any(change["change"] == "unknown" for change in changes)
+                findings.append({"host": host, "status": "incomplete" if incomplete else ("drift" if changes else "ok"),
                                  "changes": changes})
             except (OSError, ValueError, KeyError) as exc:
                 findings.append({"host": host, "status": "unknown",
                                  "reason": f"No valid approved baseline: {exc}"})
         if report_format == "text":
+            from collections import Counter
+            counts = Counter(item["status"] for item in findings)
+            print("INFRASTRUCTURE AUDIT: " + ", ".join(
+                f"{name}={counts[name]}" for name in ("ok", "drift", "incomplete", "unknown")
+            ))
             print(format_report(findings))
         else:
             print(json.dumps(findings, indent=2, ensure_ascii=False))

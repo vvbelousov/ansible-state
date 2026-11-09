@@ -27,6 +27,55 @@ def main() -> int:
             from ansible_state.multi_host import (
                 approve_manifest, manifest_from_review, resolve_hosts, review,
             )
+            if remaining[:1] == ["migrate"]:
+                migration_parser = argparse.ArgumentParser(prog="ansible-state baseline migrate")
+                migration_parser.add_argument("pattern")
+                migration_parser.add_argument("--prepare", action="store_true")
+                migration_parser.add_argument("--write-manifest")
+                migration_parser.add_argument("-i", "--inventory", action="append")
+                migration_args = migration_parser.parse_args(remaining[1:])
+                if migration_args.write_manifest and not migration_args.prepare:
+                    migration_parser.error("--write-manifest requires --prepare")
+                forwarded = []
+                for inventory_path in migration_args.inventory or []:
+                    forwarded.extend(["-i", inventory_path])
+                from ansible_state.migration import plan_backfill
+                try:
+                    selected = resolve_hosts(migration_args.pattern, forwarded)
+                    if not selected:
+                        raise ValueError("Host pattern matched no hosts")
+                    status, collected = collect(migration_args.pattern, forwarded)
+                    results = []
+                    approvals = []
+                    for host in selected:
+                        if host not in collected:
+                            results.append({"host": host, "status": "unreachable"})
+                            continue
+                        try:
+                            plan = plan_backfill(store, host, collected[host])
+                        except (OSError, ValueError, KeyError) as exc:
+                            results.append({"host": host, "status": "no_baseline", "reason": str(exc)})
+                            continue
+                        result = {"host": host, "status": "review",
+                                  "source_snapshot_id": plan["source_snapshot_id"],
+                                  "backfilled": plan["backfilled"],
+                                  "still_unavailable": plan["still_unavailable"],
+                                  "existing_changes": plan["existing_changes"]}
+                        if migration_args.prepare and plan["backfilled"]:
+                            candidate_id = store.snapshot(host, plan["inventory"])
+                            result["candidate_snapshot_id"] = candidate_id
+                            approvals.append({"host": host, "snapshot_id": candidate_id})
+                        results.append(result)
+                    if migration_args.write_manifest:
+                        Path(migration_args.write_manifest).write_text(
+                            json.dumps({"schema": 1, "approvals": approvals}, indent=2),
+                            encoding="utf-8",
+                        )
+                    print(json.dumps(results, indent=2, ensure_ascii=False))
+                    return status or (3 if any(r["status"] != "review" for r in results) else 0)
+                except (OSError, ValueError, RuntimeError) as exc:
+                    print(f"Baseline migration failed: {exc}", file=sys.stderr)
+                    return 2
             if remaining and remaining[0] == "status" and len(remaining) >= 2:
                 pattern, *options = remaining[1:]
                 manifest_path = None

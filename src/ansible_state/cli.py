@@ -47,7 +47,7 @@ def main() -> int:
                     selected = resolve_hosts(migration_args.pattern, forwarded)
                     if not selected:
                         raise ValueError("Host pattern matched no hosts")
-                    status, collected = collect(migration_args.pattern, forwarded)
+                    status, collected = collect(migration_args.pattern, forwarded, fallback_hosts=selected)
                     results = []
                     approvals = []
                     for host in selected:
@@ -138,7 +138,7 @@ def main() -> int:
             if not selected:
                 print("Host pattern matched no hosts", file=sys.stderr)
                 return 2
-            status, collected = collect(host_pattern, options)
+            status, collected = collect(host_pattern, options, fallback_hosts=selected)
             rows = [{"host": host, "snapshot_id": store.snapshot(host, collected[host]),
                      "status": "collected"} if host in collected else
                     {"host": host, "status": "failed"}
@@ -183,7 +183,7 @@ def main() -> int:
         if not selected:
             print("Host pattern matched no hosts", file=sys.stderr)
             return 2
-        status, collected = collect(host_pattern, forwarded)
+        status, collected = collect(host_pattern, forwarded, fallback_hosts=selected)
         findings = [{"host": host, "status": "unknown",
                      "reason": "Host collection failed or returned no inventory"}
                     for host in selected if host not in collected]

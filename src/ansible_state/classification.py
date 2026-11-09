@@ -65,5 +65,6 @@ def format_report(findings: list[dict]) -> str:
             lines.append(f'  {host["reason"]}')
         for item in host.get("changes", []):
             lines.append(f'  [{item["severity"].upper()}] {item["category"]} '
-                         f'{item["domain"]}:{item.get("resource", "*")} ({item["change"]})')
+                         f'{item["domain"]}:{item.get("resource", "*")} ({item["change"]}'
+                         f'{", " + item["reason"] if item.get("reason") else ""})')
     return "\n".join(lines)

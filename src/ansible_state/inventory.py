@@ -12,7 +12,7 @@ import tempfile
 import os
 
 COLLECTOR = r'''#!/usr/bin/env python3
-import hashlib, json, os, pwd, subprocess, stat
+import hashlib, json, os, pwd, re, shutil, subprocess, stat
 
 def run(*cmd):
     try:
@@ -55,18 +55,29 @@ def users():
         return None
 
 def cron():
-    # System crontabs and per-user spool files are already captured by /etc
-    # where applicable; crontab -l only reports the effective current user.
-    out = run("crontab", "-l")
-    if out is None:
+    if shutil.which("crontab") is None:
         return None
-    return {"current_user": out}
+    try:
+        p = subprocess.run(("crontab", "-l"), text=True, capture_output=True, timeout=45)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if p.returncode == 0:
+        return {"current_user": p.stdout}
+    if p.returncode == 1 and "no crontab for" in p.stderr.lower():
+        return {"current_user": ""}
+    return None
 
 def timers():
     out = run("systemctl", "list-unit-files", "--type=timer", "--no-legend", "--no-pager")
     if out is None: return None
     return dict((p[0], p[1]) for line in out.splitlines() if len(p := line.split()) >= 2)
 
+# Runtime counters are not configuration and change without administrator action.
+VOLATILE_SYSCTL = (
+    "fs.dentry-state", "fs.file-nr", "fs.inode-nr", "fs.inode-state",
+    "kernel.ns_last_pid", "kernel.random.uuid", "kernel.random.boot_id",
+    "net.netfilter.nf_conntrack_count",
+)
 def sysctl():
     out = run("sysctl", "-a")
     if out is None: return None
@@ -74,27 +85,41 @@ def sysctl():
     for line in out.splitlines():
         if " = " in line:
             key, value = line.split(" = ", 1)
-            result[key] = value
+            if key not in VOLATILE_SYSCTL:
+                result[key] = value
     return result
 
 def firewall():
-    out = run("nft", "-j", "list", "ruleset")
-    if out is not None:
-        try: return {"nftables": json.loads(out)}
-        except ValueError: return None
-    out = run("iptables-save")
-    if out is not None:
-        return {"iptables": out}
-    return None
+    if shutil.which("nft"):
+        out = run("nft", "-j", "list", "ruleset")
+        if out is None: return None
+        try:
+            ruleset = json.loads(out)
+            for entry in ruleset.get("nftables", []):
+                for value in entry.values():
+                    if isinstance(value, dict):
+                        value.pop("handle", None)
+                        value.pop("packets", None)
+                        value.pop("bytes", None)
+            return {"nftables": ruleset}
+        except (ValueError, TypeError, AttributeError):
+            return None
+    if shutil.which("iptables-save"):
+        out = run("iptables-save", "-c")
+        if out is None: return None
+        return {"iptables": re.sub(r"\\[[0-9]+:[0-9]+\\]", "[0:0]", out)}
+    return {}
 
 def containers():
-    out = run("docker", "ps", "-a", "--format", "{{.Names}}|{{.Image}}|{{.Status}}")
+    if shutil.which("docker") is None:
+        return {}
+    out = run("docker", "ps", "-a", "--format", "{{.Names}}|{{.Image}}|{{.State}}")
     if out is None: return None
     result = {}
     for line in out.splitlines():
         p = line.split("|", 2)
         if len(p) == 3:
-            result[p[0]] = {"image": p[1], "status": p[2]}
+            result[p[0]] = {"image": p[1], "state": p[2]}
     return result
 
 def filesystem():

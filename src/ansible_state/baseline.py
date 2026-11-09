@@ -122,7 +122,11 @@ def diff(expected: dict, actual: dict) -> list[dict]:
             if key in unreadable_keys:
                 continue
             if (domain in ("filesystem", "sysctl") and scope_changed and
-                    (key not in old or key not in new)) or (\n                    domain in ("sysctl", "filesystem") and\n                    (domain in expected.get("_partial_domains", []) or\n                     domain in actual.get("_partial_domains", [])) and\n                    (key not in old or key not in new)):
+                    (key not in old or key not in new)) or (
+                    domain in ("sysctl", "filesystem") and
+                    (domain in expected.get("_partial_domains", []) or
+                     domain in actual.get("_partial_domains", [])) and
+                    (key not in old or key not in new)):
                 changes.append({"domain": domain, "resource": key, "change": "unknown",
                                 "reason": ("collection_scope_changed" if scope_changed else
                                            "partial_collection")})

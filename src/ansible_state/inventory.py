@@ -100,9 +100,22 @@ def sysctl():
                 result[key] = value
     return result if result else None
 
+COLLECTION_ERRORS = {}
+def firewall_command(*cmd):
+    try:
+        p = subprocess.run(cmd, text=True, capture_output=True, timeout=45)
+        if p.returncode:
+            COLLECTION_ERRORS["firewall"] = {"command": cmd[0], "returncode": p.returncode,
+                                             "error": p.stderr.strip()[:300]}
+            return None
+        return p.stdout
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        COLLECTION_ERRORS["firewall"] = {"command": cmd[0], "error": str(exc)[:300]}
+        return None
+
 def firewall():
     if shutil.which("nft"):
-        out = run("nft", "-j", "list", "ruleset")
+        out = firewall_command("nft", "-j", "list", "ruleset")
         if out is None: return None
         try:
             ruleset = json.loads(out)
@@ -114,9 +127,10 @@ def firewall():
                         value.pop("bytes", None)
             return {"nftables": ruleset}
         except (ValueError, TypeError, AttributeError):
+            COLLECTION_ERRORS["firewall"] = {"command": "nft", "error": "invalid JSON ruleset"}
             return None
     if shutil.which("iptables-save"):
-        out = run("iptables-save", "-c")
+        out = firewall_command("iptables-save", "-c")
         if out is None: return None
         return {"iptables": re.sub(r"\\[[0-9]+:[0-9]+\\]", "[0:0]", out)}
     return {}
@@ -177,7 +191,8 @@ def filesystem():
 print(json.dumps({"schema": 1, "packages": packages(), "services": services(),
                   "listeners": listeners(), "users": users(), "filesystem": filesystem(),
                   "cron": cron(), "timers": timers(), "sysctl": sysctl(),
-                  "firewall": firewall(), "containers": containers()},
+                  "firewall": firewall(), "containers": containers(),
+                  "_collection_errors": COLLECTION_ERRORS},
                  sort_keys=True))
 '''
 

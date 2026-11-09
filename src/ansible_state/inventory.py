@@ -54,6 +54,49 @@ def users():
     except OSError:
         return None
 
+def cron():
+    # System crontabs and per-user spool files are already captured by /etc
+    # where applicable; crontab -l only reports the effective current user.
+    out = run("crontab", "-l")
+    if out is None:
+        return None
+    return {"current_user": out}
+
+def timers():
+    out = run("systemctl", "list-unit-files", "--type=timer", "--no-legend", "--no-pager")
+    if out is None: return None
+    return dict((p[0], p[1]) for line in out.splitlines() if len(p := line.split()) >= 2)
+
+def sysctl():
+    out = run("sysctl", "-a")
+    if out is None: return None
+    result = {}
+    for line in out.splitlines():
+        if " = " in line:
+            key, value = line.split(" = ", 1)
+            result[key] = value
+    return result
+
+def firewall():
+    out = run("nft", "-j", "list", "ruleset")
+    if out is not None:
+        try: return {"nftables": json.loads(out)}
+        except ValueError: return None
+    out = run("iptables-save")
+    if out is not None:
+        return {"iptables": out}
+    return None
+
+def containers():
+    out = run("docker", "ps", "-a", "--format", "{{.Names}}\\t{{.Image}}\\t{{.Status}}")
+    if out is None: return None
+    result = {}
+    for line in out.splitlines():
+        p = line.split("\\t", 2)
+        if len(p) == 3:
+            result[p[0]] = {"image": p[1], "status": p[2]}
+    return result
+
 def filesystem():
     roots = ("/etc", "/usr/local/etc", "/usr/local/bin", "/opt", "/srv")
     items = {}
@@ -96,7 +139,7 @@ def filesystem():
     return items
 
 print(json.dumps({"schema": 1, "packages": packages(), "services": services(),
-                  "listeners": listeners(), "users": users(), "filesystem": filesystem()},
+                  "listeners": listeners(), "users": users(), "filesystem": filesystem(),\n                  "cron": cron(), "timers": timers(), "sysctl": sysctl(),\n                  "firewall": firewall(), "containers": containers()},
                  sort_keys=True))
 '''
 

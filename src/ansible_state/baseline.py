@@ -62,7 +62,7 @@ class BaselineStore:
 def diff(expected: dict, actual: dict) -> list[dict]:
     """Compare logical inventory domains; unknown data is never 'clean'."""
     changes = []
-    for domain in ("packages", "services", "listeners", "users", "filesystem"):
+    for domain in ("packages", "services", "listeners", "users", "filesystem", "cron", "timers", "sysctl", "firewall", "containers"):
         old, new = expected.get(domain), actual.get(domain)
         if old is None or new is None:
             changes.append({"domain": domain, "change": "unknown"})

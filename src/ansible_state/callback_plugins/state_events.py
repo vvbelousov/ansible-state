@@ -1,8 +1,9 @@
-"""Read-only Ansible callback emitting JSONL to a wrapper-owned file."""
+"""Read-only Ansible callback emitting minimal JSONL observations."""
 from __future__ import annotations
 
 import json
 import os
+import re
 
 from ansible.plugins.callback import CallbackBase
 
@@ -20,15 +21,27 @@ class CallbackModule(CallbackBase):
         task = result._task
         action = getattr(task, "action", "")
         data = result._result.copy()
-        # Never persist module results wholesale: they can contain secrets.
-        safe = {k: data.get(k) for k in ("dest", "path", "checksum",
-                 "mode", "owner", "group", "state", "size") if k in data}
         args = getattr(task, "args", {}) or {}
-        safe_args = {k: args.get(k) for k in ("dest", "path", "state")
-                     if isinstance(args.get(k), str)}
         event = {"status": status, "action": action,
-                 "host": result._host.get_name(), "result": safe,
-                 "args": safe_args}
+                 "host": result._host.get_name()}
+        if os.environ.get("ANSIBLE_STATE_DRIFT") == "1":
+            match = re.fullmatch(r"ansible-state inspection (\d+)", task.get_name())
+            if not match or action not in ("stat", "ansible.builtin.stat"):
+                return
+            event["inspection_index"] = int(match.group(1))
+            stat = data.get("stat", {})
+            event["stat"] = {k: stat[k] for k in
+                             ("exists", "checksum", "mode", "owner", "group")
+                             if k in stat}
+        else:
+            if action not in ("copy", "ansible.builtin.copy", "template",
+                              "ansible.builtin.template", "file", "ansible.builtin.file"):
+                return
+            event["result"] = {k: data[k] for k in
+                               ("dest", "path", "checksum", "mode", "owner",
+                                "group", "state", "size") if k in data}
+            event["args"] = {k: args[k] for k in ("dest", "path", "state")
+                             if isinstance(args.get(k), str)}
         with open(path, "a", encoding="utf-8") as stream:
             stream.write(json.dumps(event, sort_keys=True) + "\n")
 

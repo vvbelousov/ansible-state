@@ -42,8 +42,8 @@ class Registry:
             FROM observations ORDER BY host, resource_type, resource_path
         """).fetchall()
         return [
-            dict(host=r[0], resource_type=r[1], resource_path=r[2],
-                 checksum=r[3], attributes=json.loads(r[4]), last_run=r[5])
+            {"host": r[0], "resource_type": r[1], "resource_path": r[2],
+                 "checksum": r[3], "attributes": json.loads(r[4]), "last_run": r[5]}
             for r in rows
         ]
 

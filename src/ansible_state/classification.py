@@ -19,6 +19,10 @@ def classify(change: dict) -> dict:
         before, after = item.get("baseline", {}), item.get("current", {})
         if isinstance(before, dict) and isinstance(after, dict):
             runtime = before.get("unit_file_state") == after.get("unit_file_state")
+    if domain == "containers" and item.get("change") == "modified":
+        before, after = item.get("baseline", {}), item.get("current", {})
+        if isinstance(before, dict) and isinstance(after, dict):
+            runtime = before.get("image") == after.get("image")
     item["category"] = "runtime" if runtime else "configuration"
     if item["change"] == "unknown":
         item["severity"] = "warning"
@@ -36,7 +40,7 @@ def load_policy(path: str | None) -> list[dict]:
         return []
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("ignore", []), list):
-        raise ValueError("Policy must be a JSON object with an 'ignore' list")
+        raise TypeError("Policy must be a JSON object with an 'ignore' list")
     rules = data.get("ignore", [])
     if any(not isinstance(rule, dict) or
            not isinstance(rule.get("domain"), str) or
@@ -49,7 +53,7 @@ def apply_policy(changes: list[dict], rules: list[dict]) -> list[dict]:
     result = []
     for change in changes:
         item = classify(change)
-        if any(fnmatch.fnmatchcase(item["domain"], rule["domain"]) and
+        if item["change"] != "unknown" and any(fnmatch.fnmatchcase(item["domain"], rule["domain"]) and
                fnmatch.fnmatchcase(str(item.get("resource", "")), rule.get("resource", "*"))
                for rule in rules):
             continue

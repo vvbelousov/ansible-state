@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from ansible_state.baseline import BaselineStore, diff
 
@@ -33,6 +33,9 @@ def review(store: BaselineStore, hosts: list[str]) -> list[dict]:
             latest = store.latest(host)
             item["snapshot_id"] = latest["snapshot_id"]
             item["status"] = "pending"
+            migration = latest["inventory"].get("_migration")
+            if migration:
+                item["migration_review"] = migration
             try:
                 approved = store.approved(host)
                 if approved["snapshot_id"] == latest["snapshot_id"]:
@@ -57,8 +60,11 @@ def manifest_from_review(items: list[dict]) -> dict:
     ]}
 
 
-def approve_manifest(store: BaselineStore, path: str, confirm: bool) -> list[dict]:
+def approve_manifest(store: BaselineStore, path: str, confirm: bool,
+                     accept_migration_warnings: bool = False) -> list[dict]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise TypeError("Approval manifest must be a JSON object")
     approvals = data.get("approvals")
     if data.get("schema") != 1 or not isinstance(approvals, list) or not approvals:
         raise ValueError("Expected nonempty approvals manifest with schema 1")
@@ -72,12 +78,12 @@ def approve_manifest(store: BaselineStore, path: str, confirm: bool) -> list[dic
             raise ValueError("Invalid or duplicate host")
         seen.add(host)
         if not isinstance(snapshot_id, str):
-            raise ValueError("Invalid snapshot id")
-        store.snapshot_record(host, snapshot_id)
+            raise TypeError("Invalid snapshot id")
+        store.validate_approval(host, snapshot_id, accept_migration_warnings)
     if not confirm:
         raise ValueError("Explicit --confirm is required")
     result = []
     for item in approvals:
-        store.approve(item["host"], item["snapshot_id"])
+        store.approve(item["host"], item["snapshot_id"], accept_migration_warnings)
         result.append({"host": item["host"], "snapshot_id": item["snapshot_id"]})
     return result

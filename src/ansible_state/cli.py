@@ -4,11 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import uuid
+from pathlib import Path
 
 from ansible_state.observation import ingest
 from ansible_state.state import Registry
@@ -20,12 +20,15 @@ def main() -> int:
     args, remaining = parser.parse_known_args()
 
     if args.command in ("snapshot", "baseline", "system-drift"):
-        from ansible_state.baseline import BaselineStore, diff
+        from ansible_state.baseline import DOMAINS, BaselineStore, diff, domain_metadata
         from ansible_state.inventory import collect
         store = BaselineStore(os.environ.get("ANSIBLE_STATE_SNAPSHOTS", ".ansible-state/snapshots"))
         if args.command == "baseline":
             from ansible_state.multi_host import (
-                approve_manifest, manifest_from_review, resolve_hosts, review,
+                approve_manifest,
+                manifest_from_review,
+                resolve_hosts,
+                review,
             )
             if remaining[:1] == ["migrate"]:
                 migration_parser = argparse.ArgumentParser(prog="ansible-state baseline migrate")
@@ -56,14 +59,16 @@ def main() -> int:
                             continue
                         try:
                             plan = plan_backfill(store, host, collected[host])
-                        except (OSError, ValueError, KeyError) as exc:
+                        except (OSError, ValueError, TypeError, KeyError) as exc:
                             results.append({"host": host, "status": "no_baseline", "reason": str(exc)})
                             continue
                         result = {"host": host, "status": "review",
                                   "source_snapshot_id": plan["source_snapshot_id"],
                                   "backfilled": plan["backfilled"],
                                   "still_unavailable": plan["still_unavailable"],
-                                  "existing_changes": plan["existing_changes"]}
+                                  "existing_changes": plan["existing_changes"],
+                                  "unresolved": plan["unresolved"],
+                                  "requires_acknowledgement": plan["requires_acknowledgement"]}
                         if migration_args.prepare and plan["backfilled"]:
                             candidate_id = store.snapshot(host, plan["inventory"])
                             result["candidate_snapshot_id"] = candidate_id
@@ -75,7 +80,8 @@ def main() -> int:
                             encoding="utf-8",
                         )
                     print(json.dumps(results, indent=2, ensure_ascii=False))
-                    return status or (3 if any(r["status"] != "review" for r in results) else 0)
+                    return status or (3 if any(r["status"] != "review" or
+                                              r.get("requires_acknowledgement") for r in results) else 0)
                 except (OSError, ValueError, RuntimeError) as exc:
                     print(f"Baseline migration failed: {exc}", file=sys.stderr)
                     return 2
@@ -106,21 +112,24 @@ def main() -> int:
                 idx = remaining.index("--manifest")
                 if idx + 1 >= len(remaining):
                     parser.error("--manifest requires a path")
-                if set(remaining[1:idx] + remaining[idx + 2:]) - {"--confirm"}:
+                if set(remaining[1:idx] + remaining[idx + 2:]) - {"--confirm", "--accept-migration-warnings"}:
                     parser.error("usage: baseline approve --manifest FILE --confirm")
                 try:
-                    result = approve_manifest(store, remaining[idx + 1], "--confirm" in remaining)
-                except (OSError, ValueError, KeyError) as exc:
+                    result = approve_manifest(store, remaining[idx + 1], "--confirm" in remaining,
+                                              "--accept-migration-warnings" in remaining)
+                except (OSError, ValueError, TypeError, KeyError) as exc:
                     print(f"Baseline approval failed: {exc}", file=sys.stderr)
                     return 2
                 print(json.dumps(result, indent=2))
                 return 0
+            accept_warnings = "--accept-migration-warnings" in remaining
+            remaining = [arg for arg in remaining if arg != "--accept-migration-warnings"]
             if len(remaining) != 3 or remaining[0] != "approve":
                 parser.error("usage: baseline status PATTERN [-i INVENTORY] [--write-manifest FILE] | baseline approve --manifest FILE --confirm | baseline approve HOST SNAPSHOT_ID")
             _, host, snapshot_id = remaining
             try:
-                store.approve(host, snapshot_id)
-            except (OSError, ValueError) as exc:
+                store.approve(host, snapshot_id, accept_warnings)
+            except (OSError, ValueError, TypeError) as exc:
                 print(f"Baseline approval failed: {exc}", file=sys.stderr)
                 return 2
             print(json.dumps({"host": host, "approved_snapshot": snapshot_id}))
@@ -139,17 +148,28 @@ def main() -> int:
                 print("Host pattern matched no hosts", file=sys.stderr)
                 return 2
             status, collected = collect(host_pattern, options, fallback_hosts=selected)
-            rows = [{"host": host, "snapshot_id": store.snapshot(host, collected[host]),
-                     "status": "collected"} if host in collected else
-                    {"host": host, "status": "failed"}
-                    for host in selected]
+            rows = []
+            for host in selected:
+                if host not in collected:
+                    rows.append({"host": host, "status": "failed"})
+                    continue
+                data = collected[host]
+                incomplete_domains = [domain for domain in DOMAINS
+                                      if domain_metadata(data, domain).get("complete") is False]
+                rows.append({"host": host, "snapshot_id": store.snapshot(host, data),
+                             "status": "partial" if incomplete_domains or data.get("_execution_error") else "collected",
+                             "incomplete_domains": incomplete_domains})
             print(json.dumps(rows, indent=2))
-            return status or (3 if any(row["status"] == "failed" for row in rows) else 0)
+            return status or (3 if any(row["status"] != "collected" for row in rows) else 0)
         # system-drift: only explicitly approved hosts, never update baseline.
         if not remaining:
             parser.error("usage: ansible-state system-drift HOST_PATTERN [ansible-playbook options]")
         host_pattern, *options = remaining
-        from ansible_state.classification import apply_policy, format_report, load_policy
+        from ansible_state.classification import (
+            apply_policy,
+            format_report,
+            load_policy,
+        )
         report_format = "json"
         policy_path = None
         # Our flags are parsed explicitly; all other options go to ansible-playbook.
@@ -172,7 +192,7 @@ def main() -> int:
                 index += 1
         try:
             rules = load_policy(policy_path)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, TypeError) as exc:
             parser.error(f"Invalid drift policy: {exc}")
         from ansible_state.multi_host import resolve_hosts
         try:
@@ -184,7 +204,8 @@ def main() -> int:
             print("Host pattern matched no hosts", file=sys.stderr)
             return 2
         status, collected = collect(host_pattern, forwarded, fallback_hosts=selected)
-        findings = [{"host": host, "status": "unknown",
+        findings = [{"host": host, "status": "incomplete", "incomplete": True,
+                     "has_drift": False, "has_runtime_changes": False,
                      "reason": "Host collection failed or returned no inventory"}
                     for host in selected if host not in collected]
         for host, data in sorted(collected.items()):
@@ -206,8 +227,9 @@ def main() -> int:
                                  "has_drift": has_drift,
                                  "has_runtime_changes": runtime_changes,
                                  "changes": changes})
-            except (OSError, ValueError, KeyError) as exc:
-                findings.append({"host": host, "status": "unknown",
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                findings.append({"host": host, "status": "incomplete", "incomplete": True,
+                                 "has_drift": False, "has_runtime_changes": False,
                                  "reason": f"No valid approved baseline: {exc}"})
         if report_format == "text":
             from collections import Counter

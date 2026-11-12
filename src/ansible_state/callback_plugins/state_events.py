@@ -30,7 +30,8 @@ class CallbackModule(CallbackBase):
             if status == "ok":
                 event["inventory"] = data.get("stdout", "")
             else:
-                event["error"] = str(data.get("msg", "collection failed"))
+                event["error"] = " ".join(str(data.get(key, "")) for key in
+                                          ("msg", "stderr", "module_stderr"))[:2000]
         elif os.environ.get("ANSIBLE_STATE_DRIFT") == "1":
             match = re.fullmatch(r"ansible-state inspection (\d+)", task.get_name())
             if not match or action not in ("stat", "ansible.builtin.stat"):
@@ -60,3 +61,6 @@ class CallbackModule(CallbackBase):
 
     def v2_runner_on_skipped(self, result):
         self._emit(result, "skipped")
+
+    def v2_runner_on_unreachable(self, result):
+        self._emit(result, "unreachable")

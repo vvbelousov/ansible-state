@@ -141,6 +141,13 @@ required observations are unresolved without confirmed configuration drift, and
 unknown is never a confirmed addition, removal or modification. Hosts can have
 both `has_drift` and `incomplete`; text summaries include that combination.
 
+Text reports group unknown findings by domain and reason, with counts and up to
+three example resources. Each host shows up to 20 configuration changes and five
+runtime changes; omitted changes are counted explicitly. Diagnostics are deduplicated
+and labelled Baseline or Collector, with two bounded examples per domain/source.
+Use `--report-format json` for all findings, values and structured diagnostics.
+Display limits never change classification or exit codes.
+
 Runtime findings remain visible through `has_runtime_changes` but do not alone
 cause configuration drift or a failing audit exit. Listener changes, service
 active-state changes with unchanged unit-file settings, and Docker state changes

@@ -37,10 +37,9 @@ def main() -> int:
                 migration_parser.add_argument("--collector-become", action="store_true")
                 migration_parser.add_argument("--write-manifest")
                 migration_parser.add_argument("-i", "--inventory", action="append")
-                migration_args = migration_parser.parse_args(remaining[1:])
+                migration_args, forwarded = migration_parser.parse_known_args(remaining[1:])
                 if migration_args.write_manifest and not migration_args.prepare:
                     migration_parser.error("--write-manifest requires --prepare")
-                forwarded = []
                 for inventory_path in migration_args.inventory or []:
                     forwarded.extend(["-i", inventory_path])
                 if migration_args.collector_become:

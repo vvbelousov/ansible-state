@@ -103,6 +103,9 @@ Schema 2 snapshots store `_collection` metadata per domain: `scope`, `complete`,
 and structured `errors` with command, return code or resource where available.
 Successful empty output differs from unavailable tools, access denial and
 partial output. Useful partial sysctl/filesystem results remain available.
+An unexpected failure in one domain is recorded as a structured diagnostic;
+other domains are still collected. Malformed domain values are incomplete even
+if their metadata claims success.
 Cron covers only the effective user's crontab: root and regular users are
 distinct resources. A confirmed missing crontab is empty; access denial is unknown.
 
@@ -121,6 +124,17 @@ prove presence/absence changes in permission-sensitive domains. Legacy
 (e.g. root). Existing global scope, partial markers and backfill provenance are
 read conservatively. Re-observe and explicitly approve a reviewed snapshot to
 establish a consistent collection scope; migration does not relabel historical data.
+The legacy `user` scope does not identify an account, so matching `user` labels
+cannot establish comparable visibility. A stored execution failure also remains
+unknown when that snapshot is used as a baseline; approving it does not erase
+the failure.
+
+Firewall normalization preserves rule comments and quota thresholds, while
+excluding counter values and consumed quota. Its scope includes a normalization
+version. Earlier firewall snapshots discarded some configuration values, so
+comparison against the corrected format returns `unknown` until a new snapshot
+is reviewed and explicitly approved. Migration preserves the earlier firewall
+baseline rather than replacing it.
 
 ### Reports and policy
 
@@ -168,6 +182,9 @@ backfill provenance, rather than the historical host-wide scope.
 ```bash
 # Review missing domains, existing changes and unresolved observations:
 ansible-state baseline migrate all -i inventory.ini --collector-become
+# Ansible connection and extra-variable options are also forwarded:
+ansible-state baseline migrate all -i inventory.ini -u operator \
+  --private-key ~/.ssh/audit -e ansible_become_user=root --collector-become
 # Write immutable candidates and an exact-ID approval manifest:
 ansible-state baseline migrate all -i inventory.ini --collector-become \
   --prepare --write-manifest migration.json

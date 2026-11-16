@@ -138,6 +138,9 @@ def firewall_command(*cmd):
     return run(*cmd)
 
 def firewall():
+    # Older normalization discarded quota thresholds and rewrote rule comments.
+    # Those values cannot be reconstructed from an approved snapshot.
+    COLLECTION[DOMAIN]["scope"]["normalization"] = 2
     if shutil.which("nft"):
         out = firewall_command("nft", "-j", "list", "ruleset")
         if out is None: return None
@@ -145,10 +148,12 @@ def firewall():
             ruleset = json.loads(out)
             if not isinstance(ruleset, dict) or not isinstance(ruleset.get("nftables"), list):
                 raise ValueError("invalid nftables ruleset")
-            def stable(value):
+            def stable(value, parent=None):
                 if isinstance(value, dict):
-                    return {k: stable(v) for k, v in value.items()
-                            if k not in ("handle", "packets", "bytes")}
+                    ignored = {"handle"}
+                    if parent == "counter": ignored.update(("packets", "bytes"))
+                    if parent == "quota": ignored.update(("used", "used_unit"))
+                    return {k: stable(v, k) for k, v in value.items() if k not in ignored}
                 if isinstance(value, list):
                     return [stable(v) for v in value if not isinstance(v, dict) or "metainfo" not in v]
                 return value
@@ -162,7 +167,11 @@ def firewall():
         if out is None: return None
         # iptables-save headers contain timestamps; counters are runtime only.
         out = "\n".join(line for line in out.splitlines() if not line.startswith("#"))
-        return {"iptables": re.sub(r"\[[0-9]+:[0-9]+\]", "[0:0]", out)}
+        # Only counter fields are volatile. Counter-like text inside a rule's
+        # quoted comment is configuration and must remain comparable.
+        out = re.sub(r"(?m)^(:\S+ \S+ )\[[0-9]+:[0-9]+\]", r"\1[0:0]", out)
+        out = re.sub(r"(?m)^\[[0-9]+:[0-9]+\](?= -A )", "[0:0]", out)
+        return {"iptables": out}
     failure("no supported firewall executable")
     return None
 
@@ -253,7 +262,12 @@ def collect_inventory():
         DOMAIN = name
         scope = {"uid": os.geteuid()} if name in ("filesystem", "sysctl", "firewall", "containers") else {"system": True}
         COLLECTION[name] = {"scope": scope, "complete": True}
-        result[name] = function()
+        try:
+            result[name] = function()
+        except Exception as exc:
+            # A domain failure must not discard other successfully observed domains.
+            failure(exc)
+            result[name] = None
         if result[name] is None:
             failure("domain unavailable")
         if COLLECTION[name].get("errors"):
@@ -347,7 +361,8 @@ def collect(host_pattern: str, ansible_args: list[str] | None = None,
             events.unlink(missing_ok=True)
             fallback_status = subprocess.call(["ansible-playbook", *args, str(playbook)], env=env)
             fallback = read_events()
-            recovered = inventories(fallback)
+            recovered = {host: data for host, data in inventories(fallback).items()
+                         if host in retry}
             collected.update(recovered)
             for host in retry:
                 if host in recovered:

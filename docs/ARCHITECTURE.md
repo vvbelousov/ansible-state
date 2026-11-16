@@ -52,6 +52,15 @@ permission-sensitive inventories, actual owner for cron, and system scope for
 host-wide public domains. Docker scope also includes the endpoint and context.
 Errors contain resource/command/returncode when known. A partial mapping retains
 observed values; missing keys in it are not proof of absence.
+Each domain has an exception boundary so an unexpected collector failure does
+not discard unrelated observations. Invalid domain values cannot become reliable
+backfill inputs simply by claiming complete metadata.
+
+Firewall scope also records normalization version 2. Counter removal is limited
+to counter fields: iptables comments and nftables quota thresholds remain
+configuration, while quota usage is excluded. Older normalization irreversibly
+removed some configuration, so cross-version firewall comparisons are unknown
+and require review and explicit approval of a fresh snapshot.
 
 Comparison treats visibility separately from value equality. Additions need a
 complete comparable baseline; removals need a complete comparable current scan.
@@ -66,6 +75,9 @@ Legacy snapshots remain immutable. Global `_collector_scope`, `_partial_domains`
 `_collection_errors` and `_backfill_provenance` are read conservatively. Domain
 provenance overrides global scope. Missing legacy identities do not prove absence;
 legacy `current_user` cron cannot identify an owner without supporting metadata.
+The legacy `user` scope cannot prove identity even when both labels match.
+Ambiguous cron entries do not prevent comparison of separately identified owners.
+Execution errors in approved historical snapshots remain unknown findings.
 
 Migration deep-copies the approved inventory and fills only wholly absent domains
 from complete, explicitly scoped current observations. It retains each backfilled
@@ -82,6 +94,9 @@ combine successful privileged and fallback inventories with unrecovered hosts:
 0 complete, 3 partial, 2 total failure, 127 executable unavailable. Ansible inventory
 resolution supplies expected hosts so absent callback events cannot count as success.
 Actual identities are collected on the target even after fallback.
+Fallback results are accepted only for the requested retry hosts and cannot
+replace an earlier successful privileged observation. Migration forwards ordinary
+Ansible connection options through the same resolution and collection paths.
 
 Classification distinguishes configuration drift, runtime changes and incomplete
 observations. A host with confirmed configuration changes is DRIFT even if incomplete;

@@ -105,7 +105,9 @@ def domain_metadata(inventory: dict, domain: str) -> dict:
     errors = inventory.get("_collection_errors", {}).get(domain)
     if errors:
         meta.setdefault("errors", errors)
-    if (inventory.get(domain) is None or errors or meta.get("errors") or
+    value = inventory.get(domain)
+    valid = isinstance(value, dict) or (domain == "listeners" and isinstance(value, list))
+    if (not valid or errors or meta.get("errors") or
             domain in inventory.get("_partial_domains", [])):
         meta["complete"] = False
     provenance = inventory.get("_provenance", {}).get(domain, {})
@@ -142,10 +144,13 @@ def diff(expected: dict, actual: dict) -> list[dict]:
     from ansible_state.inventory import VOLATILE_SYSCTL_KEYS
 
     changes = []
-    if actual.get("_execution_error"):
-        changes.append({"domain": "_execution", "change": "unknown",
-                        "reason": "collection_execution_failed",
-                        "collector_error": actual["_execution_error"]})
+    for inventory, reason, field in (
+        (expected, "baseline_execution_failed", "baseline_error"),
+        (actual, "collection_execution_failed", "collector_error"),
+    ):
+        if inventory.get("_execution_error"):
+            changes.append({"domain": "_execution", "change": "unknown",
+                            "reason": reason, field: inventory["_execution_error"]})
     for domain in DOMAINS:
         old, new = expected.get(domain), actual.get(domain)
         before = domain_metadata(expected, domain)
@@ -185,16 +190,18 @@ def diff(expected: dict, actual: dict) -> list[dict]:
                         values[owner] = values.pop("current_user")
                     else:
                         legacy_owner_unknown = True
+                        values.pop("current_user")
+                        meta["complete"] = False
             if legacy_owner_unknown:
                 unknown("legacy_cron_owner_unknown")
-                continue
         if domain == "sysctl":
             old = {k: v for k, v in old.items() if k not in VOLATILE_SYSCTL_KEYS}
             new = {k: v for k, v in new.items() if k not in VOLATILE_SYSCTL_KEYS}
         if domain == "containers":
             old, new = _containers(old), _containers(new)
         scoped = domain in SCOPED_DOMAINS
-        scopes_known = before.get("scope") is not None and after.get("scope") is not None
+        scopes_known = all(meta.get("scope") and not meta["scope"].get("legacy_user")
+                           for meta in (before, after))
         same_scope = not scoped or (scopes_known and before["scope"] == after["scope"])
         if scoped and not same_scope and (scopes_known or before.get("scope") or
                                          after.get("scope") or old.keys() != new.keys()):

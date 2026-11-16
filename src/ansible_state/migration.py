@@ -20,7 +20,7 @@ def plan_backfill(store: BaselineStore, host: str, current: dict) -> dict:
         value = current.get(domain)
         meta = domain_metadata(current, domain)
         # No scope/completeness metadata means reliability cannot be established.
-        if (value is None or meta.get("complete") is not True or
+        if (not isinstance(value, (dict, list)) or meta.get("complete") is not True or
                 not meta.get("scope") or current.get("_execution_error")):
             unavailable.append(domain)
             continue
